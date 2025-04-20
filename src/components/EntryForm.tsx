@@ -5,86 +5,96 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { X } from "lucide-react";
-import { VaultEntry } from './EntryCard';
+import { toast } from "sonner";
+import { Folder, VaultEntry, createTextEntry, updateVaultEntry } from '@/services/vaultService';
 
 type EntryFormProps = {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (entry: Omit<VaultEntry, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }) => void;
+  onSave: () => void;
   initialData?: VaultEntry;
+  folders: Folder[];
+  selectedFolderId: string | null;
 };
 
 const EntryForm: React.FC<EntryFormProps> = ({ 
   isOpen, 
   onClose, 
   onSave, 
-  initialData 
+  initialData,
+  folders,
+  selectedFolderId
 }) => {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
-  const [tagInput, setTagInput] = useState('');
-  const [tags, setTags] = useState<string[]>([]);
+  const [folderId, setFolderId] = useState<string | null>(null);
+  const [category, setCategory] = useState('note');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (initialData) {
       setTitle(initialData.title);
-      setContent(initialData.content);
-      setTags(initialData.tags);
+      setContent(initialData.content || '');
+      setFolderId(initialData.folder_id);
+      setCategory(initialData.category || 'note');
     } else {
       resetForm();
     }
   }, [initialData, isOpen]);
 
+  useEffect(() => {
+    if (!initialData && isOpen) {
+      setFolderId(selectedFolderId);
+    }
+  }, [initialData, selectedFolderId, isOpen]);
+
   const resetForm = () => {
     setTitle('');
     setContent('');
-    setTagInput('');
-    setTags([]);
+    setFolderId(selectedFolderId);
+    setCategory('note');
   };
 
-  const handleAddTag = () => {
-    if (tagInput.trim() && !tags.includes(tagInput.trim())) {
-      setTags([...tags, tagInput.trim()]);
-      setTagInput('');
-    }
-  };
-
-  const handleTagKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      handleAddTag();
-    }
-  };
-
-  const handleRemoveTag = (tagToRemove: string) => {
-    setTags(tags.filter(tag => tag !== tagToRemove));
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!title.trim() || !content.trim()) {
+    if (!title.trim()) {
+      toast.error("Title is required");
       return;
     }
     
     setIsSubmitting(true);
     
-    const entryData = {
-      ...(initialData ? { id: initialData.id } : {}),
-      title: title.trim(),
-      content: content.trim(),
-      tags,
-    };
-    
-    onSave(entryData);
-    
-    // In a real app, we'd wait for the API response
-    setTimeout(() => {
-      setIsSubmitting(false);
+    try {
+      if (initialData) {
+        // Update existing entry
+        await updateVaultEntry(initialData.id, {
+          title: title.trim(),
+          content: content.trim(),
+          folder_id: folderId,
+          category: category || null
+        });
+        toast.success("Entry updated successfully");
+      } else {
+        // Create new entry
+        await createTextEntry({
+          title: title.trim(),
+          content: content.trim(),
+          folder_id: folderId,
+          category: category || null
+        });
+        toast.success("Entry created successfully");
+      }
+      
+      onSave();
       onClose();
-    }, 500);
+    } catch (error: any) {
+      toast.error(error.message || "An error occurred while saving the entry");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -116,50 +126,41 @@ const EntryForm: React.FC<EntryFormProps> = ({
               onChange={(e) => setContent(e.target.value)}
               placeholder="Enter your notes, links, or other content..."
               className="min-h-[150px]"
-              required
             />
           </div>
           
           <div className="space-y-2">
-            <Label htmlFor="tags">Tags</Label>
-            <div className="flex">
-              <Input
-                id="tags"
-                value={tagInput}
-                onChange={(e) => setTagInput(e.target.value)}
-                onKeyDown={handleTagKeyDown}
-                placeholder="Add tag and press Enter"
-                className="flex-1"
-              />
-              <Button 
-                type="button" 
-                onClick={handleAddTag}
-                variant="secondary"
-                className="ml-2"
-              >
-                Add
-              </Button>
-            </div>
-            
-            {tags.length > 0 && (
-              <div className="flex flex-wrap gap-2 mt-2">
-                {tags.map(tag => (
-                  <div 
-                    key={tag} 
-                    className="flex items-center bg-vault-light text-vault-dark px-3 py-1 rounded-full text-sm"
-                  >
-                    {tag}
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveTag(tag)}
-                      className="ml-2 text-gray-500 hover:text-gray-700"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </div>
+            <Label htmlFor="folder">Folder</Label>
+            <Select value={folderId || ''} onValueChange={(value) => setFolderId(value || null)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select a folder" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">Root (No folder)</SelectItem>
+                {folders.map(folder => (
+                  <SelectItem key={folder.id} value={folder.id}>
+                    {folder.folder_name}
+                  </SelectItem>
                 ))}
-              </div>
-            )}
+              </SelectContent>
+            </Select>
+          </div>
+          
+          <div className="space-y-2">
+            <Label htmlFor="category">Category</Label>
+            <Select value={category || ''} onValueChange={setCategory}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select a category" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="note">Note</SelectItem>
+                <SelectItem value="password">Password</SelectItem>
+                <SelectItem value="contact">Contact</SelectItem>
+                <SelectItem value="link">Link</SelectItem>
+                <SelectItem value="code">Code</SelectItem>
+                <SelectItem value="other">Other</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           
           <DialogFooter className="pt-4">

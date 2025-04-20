@@ -1,152 +1,99 @@
 
-import React, { useState } from 'react';
+import React, { useEffect } from 'react';
 import { Button } from "@/components/ui/button";
-import { 
-  Sidebar, 
-  SidebarContent, 
-  SidebarFooter, 
-  SidebarHeader,
-  SidebarProvider,
-  SidebarTrigger
-} from "@/components/ui/sidebar";
+import { LogOut, User } from "lucide-react";
 import { toast } from "sonner";
-import { FileText, FolderClosed, Home, Lock, LogOut, Plus, Search, Settings, User } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import { supabase } from "@/integrations/supabase/client";
 
 type MainLayoutProps = {
   children: React.ReactNode;
-  userData: { id: string; email: string; name: string };
+  userData: {
+    id: string;
+    email: string;
+    name: string;
+  };
   onLogout: () => void;
 };
 
 const MainLayout: React.FC<MainLayoutProps> = ({ children, userData, onLogout }) => {
-  const [searchQuery, setSearchQuery] = useState('');
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (searchQuery.trim()) {
-      toast.info(`Searching for "${searchQuery}"...`);
+  useEffect(() => {
+    // Check if the bucket exists, create it if it doesn't
+    const checkAndCreateBucket = async () => {
+      try {
+        const { data: buckets } = await supabase.storage.listBuckets();
+        
+        if (!buckets?.find(bucket => bucket.name === 'vault-files')) {
+          // We need to create the bucket using SQL due to RLS limitations
+          console.log('Vault files bucket needs to be created');
+        }
+      } catch (error) {
+        console.error('Error checking buckets:', error);
+      }
+    };
+    
+    checkAndCreateBucket();
+  }, []);
+  
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+      onLogout();
+      toast.success("Logged out successfully");
+    } catch (error: any) {
+      toast.error(error.message || "Error logging out");
     }
   };
 
   return (
-    <SidebarProvider>
-      <div className="min-h-screen flex w-full">
-        <VaultSidebar userData={userData} onLogout={onLogout} />
-        <div className="flex-1 flex flex-col">
-          <header className="bg-white border-b p-4 sticky top-0 z-10 flex justify-between items-center">
+    <div className="min-h-screen flex flex-col">
+      <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-16">
             <div className="flex items-center">
-              <SidebarTrigger>
-                <Button variant="ghost" size="icon" className="lg:hidden">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="24"
-                    height="24"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className="h-6 w-6"
-                  >
-                    <line x1="4" x2="20" y1="12" y2="12" />
-                    <line x1="4" x2="20" y1="6" y2="6" />
-                    <line x1="4" x2="20" y1="18" y2="18" />
+              <div className="bg-vault-primary p-2 rounded-full">
+                <div className="h-6 w-6 text-white">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
                   </svg>
-                </Button>
-              </SidebarTrigger>
-              <form onSubmit={handleSearch} className="ml-2 lg:ml-6 relative w-full max-w-sm">
-                <Search className="h-4 w-4 absolute left-3 top-3 text-vault-gray" />
-                <Input
-                  type="search"
-                  placeholder="Search vault..."
-                  className="pl-10 w-full"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-              </form>
+                </div>
+              </div>
+              <h1 className="ml-2 text-xl font-bold text-vault-dark">OneVault</h1>
             </div>
-            <div className="flex items-center space-x-2">
-              <Button variant="outline" size="sm" className="hidden md:flex">
-                <Plus className="mr-2 h-4 w-4" />
-                New Entry
-              </Button>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="rounded-full w-8 h-8 bg-vault-light text-vault-primary"
+            
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center">
+                <User className="h-5 w-5 text-vault-gray mr-2" />
+                <span className="text-sm font-medium">{userData.name}</span>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleLogout}
+                className="text-vault-gray hover:text-vault-dark"
               >
-                <User className="h-4 w-4" />
+                <LogOut className="h-4 w-4 mr-1" />
+                Logout
               </Button>
             </div>
-          </header>
-          <main className="flex-1 p-4 overflow-auto">
-            {children}
-          </main>
-        </div>
-      </div>
-    </SidebarProvider>
-  );
-};
-
-const VaultSidebar: React.FC<{ 
-  userData: { id: string; email: string; name: string }; 
-  onLogout: () => void;
-}> = ({ userData, onLogout }) => {
-  return (
-    <Sidebar>
-      <SidebarHeader className="h-14 flex items-center px-4">
-        <Lock className="h-5 w-5 text-vault-primary" />
-        <span className="ml-2 text-xl font-bold text-white">OneVault</span>
-      </SidebarHeader>
-      <SidebarContent>
-        <div className="px-3 py-2">
-          <div className="mb-4 px-4 py-3 rounded-md bg-sidebar-accent">
-            <p className="text-sm font-medium text-vault-primary">{userData.name}</p>
-            <p className="text-xs text-gray-400 truncate">{userData.email}</p>
           </div>
-          
-          <nav className="space-y-2 mt-6">
-            <NavItem icon={<Home className="h-5 w-5" />} label="Dashboard" active />
-            <NavItem icon={<FileText className="h-5 w-5" />} label="My Notes" />
-            <NavItem icon={<FolderClosed className="h-5 w-5" />} label="Categories" />
-            <NavItem icon={<Settings className="h-5 w-5" />} label="Settings" />
-          </nav>
         </div>
-      </SidebarContent>
-      <SidebarFooter>
-        <div className="px-3 py-2">
-          <Button 
-            variant="ghost" 
-            className="w-full justify-start text-sidebar-foreground hover:text-white hover:bg-sidebar-accent"
-            onClick={onLogout}
-          >
-            <LogOut className="mr-2 h-5 w-5" />
-            Sign Out
-          </Button>
+      </header>
+      
+      <main className="flex-grow bg-gray-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          {children}
         </div>
-      </SidebarFooter>
-    </Sidebar>
-  );
-};
-
-const NavItem: React.FC<{ 
-  icon: React.ReactNode; 
-  label: string; 
-  active?: boolean;
-}> = ({ icon, label, active }) => {
-  return (
-    <button 
-      className={`flex items-center w-full px-4 py-2 rounded-md text-left transition-colors ${
-        active 
-          ? 'bg-sidebar-primary text-white' 
-          : 'text-sidebar-foreground hover:text-white hover:bg-sidebar-accent'
-      }`}
-    >
-      <span className="mr-3">{icon}</span>
-      <span className="font-medium">{label}</span>
-    </button>
+      </main>
+      
+      <footer className="bg-white border-t border-gray-200 py-4">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <p className="text-center text-sm text-vault-gray">
+            &copy; {new Date().getFullYear()} OneVault. All rights reserved.
+          </p>
+        </div>
+      </footer>
+    </div>
   );
 };
 
