@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import { Lock, Mail, User } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
 type AuthFormProps = {
   onSuccessfulAuth: (userData: { id: string; email: string; name: string }) => void;
@@ -17,24 +18,55 @@ const AuthForm: React.FC<AuthFormProps> = ({ onSuccessfulAuth }) => {
   const [name, setName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
-    // This simulates an API call for auth - would be replaced by actual auth in a real app
-    setTimeout(() => {
+    try {
+      if (isLogin) {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+
+        if (error) throw error;
+
+        if (data.user) {
+          toast.success("Logged in successfully");
+          onSuccessfulAuth({
+            id: data.user.id,
+            email: data.user.email!,
+            name: data.user.email!.split('@')[0], // Fallback to email username if no name
+          });
+        }
+      } else {
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              name: name || email.split('@')[0], // Use name if provided, otherwise use email username
+            },
+          },
+        });
+
+        if (error) throw error;
+
+        if (data.user) {
+          toast.success("Account created successfully! Please check your email for verification.");
+          // For this MVP, we'll automatically log them in after signup
+          onSuccessfulAuth({
+            id: data.user.id,
+            email: data.user.email!,
+            name: name || data.user.email!.split('@')[0],
+          });
+        }
+      }
+    } catch (error: any) {
+      toast.error(error.message || "An error occurred during authentication");
+    } finally {
       setIsLoading(false);
-      
-      // Simulate successful auth
-      const userData = {
-        id: '1',
-        email,
-        name: name || email.split('@')[0],
-      };
-      
-      toast.success(isLogin ? "Logged in successfully" : "Account created successfully");
-      onSuccessfulAuth(userData);
-    }, 1500);
+    }
   };
 
   return (
@@ -99,6 +131,7 @@ const AuthForm: React.FC<AuthFormProps> = ({ onSuccessfulAuth }) => {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
+              minLength={6}
             />
           </div>
           
